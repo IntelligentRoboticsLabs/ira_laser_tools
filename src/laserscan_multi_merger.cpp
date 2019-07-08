@@ -9,7 +9,7 @@
 #include <pcl/io/pcd_io.h>
 #include <sensor_msgs/PointCloud.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <sensor_msgs/point_cloud_conversion.h> 
+#include <sensor_msgs/point_cloud_conversion.h>
 #include "sensor_msgs/LaserScan.h"
 #include "pcl_ros/point_cloud.h"
 #include <Eigen/Dense>
@@ -42,7 +42,10 @@ private:
     vector<string> input_topics;
 
     void laserscan_topic_parser();
-
+    void checkLaserTopics(
+      vector<string> &tokens,
+      ros::master::V_TopicInfo &topics,
+      vector<string> &input_topics);
     double angle_min;
     double angle_max;
     double angle_increment;
@@ -68,28 +71,30 @@ void LaserscanMerger::reconfigureCallback(laserscan_multi_mergerConfig &config, 
 	this->range_max = config.range_max;
 }
 
+void LaserscanMerger::checkLaserTopics(vector<string> &tokens, ros::master::V_TopicInfo &topics, vector<string> &input_topics)
+{
+	for(int i=0;i<tokens.size();++i)
+	  for(int j=0;j<topics.size();++j)
+			if( (tokens[i].compare(topics[j].name) == 0) && (topics[j].datatype.compare("sensor_msgs/LaserScan") == 0) )
+				input_topics.push_back(topics[j].name);
+}
+
 void LaserscanMerger::laserscan_topic_parser()
 {
 	// LaserScan topics to subscribe
+  std::vector<string> tokens, tmp_input_topics;
 	ros::master::V_TopicInfo topics;
-	ros::master::getTopics(topics);
+  istringstream iss(laserscan_topics);
+  ros::Rate loop_rate(1);
 
-    istringstream iss(laserscan_topics);
-	vector<string> tokens;
-	copy(istream_iterator<string>(iss), istream_iterator<string>(), back_inserter<vector<string> >(tokens));
-
-	vector<string> tmp_input_topics;
-
-	for(int i=0;i<tokens.size();++i)
-	{
-	        for(int j=0;j<topics.size();++j)
-		{
-			if( (tokens[i].compare(topics[j].name) == 0) && (topics[j].datatype.compare("sensor_msgs/LaserScan") == 0) )
-			{
-				tmp_input_topics.push_back(topics[j].name);
-			}
-		}
-	}
+  while (tmp_input_topics.size() == 0)
+  {
+    ROS_WARN("Waiting for input topics...");
+    ros::master::getTopics(topics);
+  	copy(istream_iterator<string>(iss), istream_iterator<string>(), back_inserter<vector<string> >(tokens));
+    checkLaserTopics(tokens, topics, tmp_input_topics);
+    loop_rate.sleep();
+  }
 
 	sort(tmp_input_topics.begin(),tmp_input_topics.end());
 	std::vector<string>::iterator last = std::unique(tmp_input_topics.begin(), tmp_input_topics.end());
@@ -130,16 +135,16 @@ LaserscanMerger::LaserscanMerger()
 	nh.getParam("destination_frame", destination_frame);
 	nh.getParam("cloud_destination_topic", cloud_destination_topic);
 	nh.getParam("scan_destination_topic", scan_destination_topic);
-    nh.getParam("laserscan_topics", laserscan_topics);
+  nh.getParam("laserscan_topics", laserscan_topics);
 
-    nh.param("angle_min", angle_min, -2.36);
-    nh.param("angle_max", angle_max, 2.36);
-    nh.param("angle_increment", angle_increment, 0.0058);
-    nh.param("scan_time", scan_time, 0.0333333);
-    nh.param("range_min", range_min, 0.45);
-    nh.param("range_max", range_max, 25.0);
+  nh.param("angle_min", angle_min, -2.36);
+  nh.param("angle_max", angle_max, 2.36);
+  nh.param("angle_increment", angle_increment, 0.0058);
+  nh.param("scan_time", scan_time, 0.0333333);
+  nh.param("range_min", range_min, 0.45);
+  nh.param("range_max", range_max, 25.0);
 
-    this->laserscan_topic_parser();
+  this->laserscan_topic_parser();
 
 	point_cloud_publisher_ = node_.advertise<sensor_msgs::PointCloud2> (cloud_destination_topic.c_str(), 1, false);
 	laser_scan_publisher_ = node_.advertise<sensor_msgs::LaserScan> (scan_destination_topic.c_str(), 1, false);
@@ -167,7 +172,7 @@ void LaserscanMerger::scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan,
 			pcl_conversions::toPCL(tmpCloud3, clouds[i]);
 			clouds_modified[i] = true;
 		}
-	}	
+	}
 
     // Count how many scans we have
 	int totalClouds = 0;
@@ -186,7 +191,7 @@ void LaserscanMerger::scanCallback(const sensor_msgs::LaserScan::ConstPtr& scan,
 			pcl::concatenatePointCloud(merged_cloud, clouds[i], merged_cloud);
 			clouds_modified[i] = false;
 		}
-	
+
 		point_cloud_publisher_.publish(merged_cloud);
 
 		Eigen::MatrixXf points;
