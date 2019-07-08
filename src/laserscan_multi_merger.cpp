@@ -85,9 +85,9 @@ void LaserscanMerger::laserscan_topic_parser()
   std::vector<string> tokens, tmp_input_topics;
 	ros::master::V_TopicInfo topics;
   istringstream iss(laserscan_topics);
+  copy(istream_iterator<string>(iss), istream_iterator<string>(), back_inserter<vector<string> >(tokens));
   ros::Rate loop_rate(1);
-
-  while (tmp_input_topics.size() == 0)
+  while (tmp_input_topics.size() <= tokens.size())
   {
     ROS_WARN("Waiting for input topics...");
     ros::master::getTopics(topics);
